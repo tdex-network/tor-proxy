@@ -6,8 +6,8 @@ import (
 	"log"
 	"net"
 
+	pb "github.com/TDex-network/tor-proxy/example/proto"
 	"google.golang.org/grpc"
-	pb "google.golang.org/grpc/examples/helloworld/helloworld"
 )
 
 const (
