@@ -5,84 +5,66 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"net/http/httputil"
 	"net/url"
 	"strings"
 
-	"github.com/cretz/bine/tor"
-	"github.com/ipsn/go-libtor"
 	"golang.org/x/net/proxy"
 )
 
-// TorProxy holds the tor client details and the list cleartext addresses to be redirect to the onions
+// TorProxy holds the tor client details and the list cleartext addresses to be redirect to the onions URLs
 type TorProxy struct {
 	Address   string
 	Client    *TorClient
-	Redirects []string
-}
-
-// TorClient holds the Host and Port for the tor client and if useEmbedded=true means is using an embedded tor client instance
-type TorClient struct {
-	tor *tor.Tor
-
-	useEmbedded bool
-
-	Host string
-	Port int
-}
-
-// StartTor starts the embedded tor client
-func (tp *TorProxy) StartTor() error {
-	// Starting tor please wait a bit...
-	torClient, err := tor.Start(nil, &tor.StartConf{
-		NoAutoSocksPort: true,
-		ProcessCreator:  libtor.Creator,
-	})
-	if err != nil {
-		return fmt.Errorf("Failed to start tor: %v", err)
-	}
-
-	tp.Client = &TorClient{
-		tor:         torClient,
-		useEmbedded: true,
-	}
-
-	return nil
-}
-
-// Stop stops the tor client
-func (tp *TorProxy) Stop() error {
-	return tp.Client.tor.Close()
+	Redirects []*url.URL
 }
 
 // NewTorProxyFromHostAndPort returns a *TorProxy with givnen host and port
-func NewTorProxyFromHostAndPort(address string, torHost string, torPort int) *TorProxy {
+func NewTorProxyFromHostAndPort(address string, torHost string, torPort int) (*TorProxy, error) {
+
+	// TODO parse tor host and port here and try to dial/check it works
+
 	return &TorProxy{
 		Address: address,
 		Client: &TorClient{
 			Host: torHost,
 			Port: torPort,
 		},
-	}
+	}, nil
 }
 
 // NewTorProxy returns a default *TorProxy connecting on canonical localhost:9050
-func NewTorProxy(address string) *TorProxy {
+func NewTorProxy(address string) (*TorProxy, error) {
+	torClient, err := NewTorEmbedded()
+	if err != nil {
+		return nil, fmt.Errorf("Couldn't start tor client: %w", err)
+	}
+
 	return &TorProxy{
 		Address: address,
-		Client: &TorClient{
-			Host: "127.0.0.1",
-			Port: 9050,
-		},
-	}
+		Client:  torClient,
+	}, nil
 }
 
 // WithRedirects modify the TorProxy struct with givend from -> to map
-func (tp *TorProxy) WithRedirects(redirects []string) {
-	tp.Redirects = append(tp.Redirects, redirects...)
+func (tp *TorProxy) WithRedirects(redirects []string) error {
+	var err error
+	for _, to := range redirects {
+		// we parse the destination upstram which should be on *.onion address
+		origin, err := url.Parse(to)
+		if err != nil {
+			err = fmt.Errorf("Failed to parse address : %v", err)
+			break
+		}
+		tp.Redirects = append(tp.Redirects, origin)
+	}
+
+	return err
 }
 
-// Serve ...
+// Serve starts a HTTP1 Listener aand reverse proxy all the cleartext requests to registered Onion addresses.
+// For each onion address we get to know thanks the WithRedirects method, we register a URL.path like
+// host:port/<just_onion_host_without_dot_onion>/[<grpc_package>.<grpc_service>/<grpc_method>]
+// Each incoming request will be proxied to <just_onion_host_without_dot_onion>.onion/[<grpc_package>.<grpc_service>/<grpc_method>]
 func (tp *TorProxy) Serve() (err error) {
 
 	// Create a socks5 dialer
@@ -98,34 +80,31 @@ func (tp *TorProxy) Serve() (err error) {
 	return
 }
 
-func reverseProxy(address string, redirects []string, dialer proxy.Dialer) error {
+// reverseProxy takes an address where to listen, a dialer with SOCKS5 proxy and a list of redirects as a list of URLs
+// the incoming request should match the pattern host:port/<just_onion_host_without_dot_onion>/<grpc_package>.<grpc_service>/<grpc_method>
+func reverseProxy(address string, redirects []*url.URL, dialer proxy.Dialer) error {
 
 	for _, to := range redirects {
+		removeForUpstream := "/" + withoutOnion(to.Host)
 
-		origin, err := url.Parse(to)
-		if err != nil {
-			return err
-		}
+		// get a simple reverse proxy
+		revproxy := generateReverseProxy(to, dialer)
 
-		director := func(req *http.Request) {
-			req.Header.Add("X-Forwarded-Host", req.Host)
-			req.Header.Add("X-Origin-Host", origin.Host)
-			req.URL.Scheme = "http"
-			req.URL.Host = origin.Host
-			req.Host = origin.Host
-		}
+		http.HandleFunc(removeForUpstream+"/", func(w http.ResponseWriter, r *http.Request) {
 
-		transport := &http.Transport{
-			Dial: dialer.Dial,
-		}
+			// prepare request removing useless headers
+			if err := prepareRequest(r); err != nil {
+				http.Error(w, fmt.Errorf("preparation request in reverse proxy: %w", err).Error(), http.StatusInternalServerError)
+				return
+			}
 
-		revproxy := &httputil.ReverseProxy{Director: director, Transport: transport}
+			// remove the <just_onion_host_without_dot_onion> from the upstream path
+			pathWithOnion := r.URL.Path
+			pathWithoutOnion := strings.ReplaceAll(pathWithOnion, removeForUpstream, "")
+			r.URL.Path = pathWithoutOnion
 
-		pattern := "/" + withoutOnion(origin.Host)
-		http.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
 			revproxy.ServeHTTP(w, r)
 		})
-
 	}
 
 	return http.ListenAndServe(address, nil)
