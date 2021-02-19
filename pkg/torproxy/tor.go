@@ -1,0 +1,43 @@
+package torproxy
+
+import (
+	"fmt"
+
+	"github.com/cretz/bine/tor"
+	"github.com/ipsn/go-libtor"
+)
+
+// TorClient holds the Host and Port for the tor client and if useEmbedded=true means is using an embedded tor client instance
+type TorClient struct {
+	tor *tor.Tor
+
+	useEmbedded bool
+
+	Host string
+	Port int
+}
+
+// NewTorEmbedded starts the embedded tor client
+func NewTorEmbedded() (*TorClient, error) {
+	// Starting tor please wait a bit...
+	torInstance, err := tor.Start(nil, &tor.StartConf{
+		NoAutoSocksPort: true,
+		ProcessCreator:  libtor.Creator,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("Failed to start tor: %v", err)
+	}
+
+	return &TorClient{
+		Host:        "127.0.0.1",
+		Port:        9050,
+		tor:         torInstance,
+		useEmbedded: true,
+	}, nil
+
+}
+
+// Stop stops the tor client
+func (tc *TorClient) Stop() error {
+	return tc.tor.Close()
+}

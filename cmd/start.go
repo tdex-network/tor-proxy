@@ -69,7 +69,7 @@ func startAction(ctx *cli.Context) error {
 	}
 
 	// Serve the reverse proxy
-	proxy := torproxy.NewTorProxyFromHostAndPort(
+	proxy, _ := torproxy.NewTorProxyFromHostAndPort(
 		listeningAddress,
 		ctx.String("socks5_hostname"),
 		ctx.Int("socks5_port"),
