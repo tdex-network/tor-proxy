@@ -11,5 +11,5 @@ $ go get github.com/tdex-network/tor-proxy
 ## ℹ️ Usage
 
 ```sh
-$ go run ./cmd/main.go -config config.json
+$ go run ./cmd/main.go --insecure --registry '[{"endpoint": "http://somewherefaraway.onion:80"}]' 
 ```
