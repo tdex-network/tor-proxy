@@ -14,17 +14,19 @@ import (
 // TorProxy holds the tor client details and the list cleartext addresses to be redirect to the onions URLs
 type TorProxy struct {
 	Address   string
+	Domain    string
 	Client    *TorClient
 	Redirects []*url.URL
+
+	Listener net.Listener
+	useTLS   bool
 }
 
 // NewTorProxyFromHostAndPort returns a *TorProxy with givnen host and port
-func NewTorProxyFromHostAndPort(address string, torHost string, torPort int) (*TorProxy, error) {
+func NewTorProxyFromHostAndPort(torHost string, torPort int) (*TorProxy, error) {
 
 	// TODO parse tor host and port here and try to dial/check it works
-
 	return &TorProxy{
-		Address: address,
 		Client: &TorClient{
 			Host: torHost,
 			Port: torPort,
@@ -33,15 +35,14 @@ func NewTorProxyFromHostAndPort(address string, torHost string, torPort int) (*T
 }
 
 // NewTorProxy returns a default *TorProxy connecting on canonical localhost:9050
-func NewTorProxy(address string) (*TorProxy, error) {
+func NewTorProxy() (*TorProxy, error) {
 	torClient, err := NewTorEmbedded()
 	if err != nil {
 		return nil, fmt.Errorf("Couldn't start tor client: %w", err)
 	}
 
 	return &TorProxy{
-		Address: address,
-		Client:  torClient,
+		Client: torClient,
 	}, nil
 }
 
@@ -65,7 +66,7 @@ func (tp *TorProxy) WithRedirects(redirects []string) error {
 // For each onion address we get to know thanks the WithRedirects method, we register a URL.path like
 // host:port/<just_onion_host_without_dot_onion>/[<grpc_package>.<grpc_service>/<grpc_method>]
 // Each incoming request will be proxied to <just_onion_host_without_dot_onion>.onion/[<grpc_package>.<grpc_service>/<grpc_method>]
-func (tp *TorProxy) Serve() (err error) {
+func (tp *TorProxy) Serve(address string) error {
 
 	// Create a socks5 dialer
 	dialer, err := proxy.SOCKS5("tcp", fmt.Sprintf("%s:%d", tp.Client.Host, tp.Client.Port), nil, proxy.Direct)
@@ -73,16 +74,42 @@ func (tp *TorProxy) Serve() (err error) {
 		log.Fatalf("Couldn't connect to socks proxy: %s", err.Error())
 	}
 
-	if err := reverseProxy(tp.Address, tp.Redirects, dialer); err != nil {
+	// insecure
+	// TODO add certmagic
+	lis, err := net.Listen("tcp", address)
+	if err != nil {
 		return err
 	}
 
-	return
+	if err := reverseProxy(tp.Redirects, lis, dialer); err != nil {
+		return err
+	}
+
+	tp.Listener = lis
+	tp.Address = address
+
+	return err
+}
+
+// Close stops the tor embedded client if used and cleanup the listener connection
+func (tp *TorProxy) Close() error {
+
+	if tp.Client.useEmbedded {
+		if err := tp.Client.tor.Close(); err != nil {
+			return err
+		}
+	}
+
+	if err := tp.Listener.Close(); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // reverseProxy takes an address where to listen, a dialer with SOCKS5 proxy and a list of redirects as a list of URLs
 // the incoming request should match the pattern host:port/<just_onion_host_without_dot_onion>/<grpc_package>.<grpc_service>/<grpc_method>
-func reverseProxy(address string, redirects []*url.URL, dialer proxy.Dialer) error {
+func reverseProxy(redirects []*url.URL, lis net.Listener, dialer proxy.Dialer) error {
 
 	for _, to := range redirects {
 		removeForUpstream := "/" + withoutOnion(to.Host)
@@ -107,7 +134,7 @@ func reverseProxy(address string, redirects []*url.URL, dialer proxy.Dialer) err
 		})
 	}
 
-	return http.ListenAndServe(address, nil)
+	return http.Serve(lis, nil)
 }
 
 func withoutOnion(host string) string {

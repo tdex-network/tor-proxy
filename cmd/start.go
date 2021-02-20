@@ -4,7 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 
 	"github.com/tdex-network/tor-proxy/pkg/torproxy"
 	"github.com/urfave/cli/v2"
@@ -70,16 +73,22 @@ func startAction(ctx *cli.Context) error {
 
 	// Serve the reverse proxy
 	proxy, _ := torproxy.NewTorProxyFromHostAndPort(
-		listeningAddress,
 		ctx.String("socks5_hostname"),
 		ctx.Int("socks5_port"),
 	)
+	defer proxy.Close()
+
+	// Add redirects array
 	proxy.WithRedirects(redirects)
 
 	log.Printf("Serving tor proxy on %s\n", listeningAddress)
-	if err := proxy.Serve(); err != nil {
+	if err := proxy.Serve(listeningAddress); err != nil {
 		return fmt.Errorf("serving proxy: %w", err)
 	}
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
+	<-sigChan
 
 	return nil
 }
