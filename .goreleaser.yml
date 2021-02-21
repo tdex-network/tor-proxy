@@ -1,6 +1,6 @@
 builds:
   - id: "torproxy"
-    main: ./cmd/*.go
+    main: ./cmd/*
     env:
       - CGO_ENABLED=1
     goos:
