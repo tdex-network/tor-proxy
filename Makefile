@@ -3,7 +3,8 @@
 ## build: build the binary in ./bin
 build: clean
 	@echo "Build..."
-	env go build -tags netgo -ldflags="-s -w" -o bin/torproxy cmd/*
+	@export GO111MODULE=on; \
+	go build -o bin/torproxy-`go env GOOS`-`go env GOARCH` ./cmd/*.go
 
 ## clean: remove the compiled binaries in ./bin
 clean: 
@@ -13,7 +14,7 @@ clean:
 ## fmt: Go Format
 fmt:
 	@echo "Gofmt..."
-	@if [ -n "$(gofmt -l ./...)" ]; then echo "Go code is not formatted"; exit 1; fi
+	if [ -n "$(gofmt -l ./...)" ]; then echo "Go code is not formatted"; exit 1; fi
 
 ## help: prints this help message
 help:
