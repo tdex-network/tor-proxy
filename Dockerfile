@@ -3,7 +3,7 @@ FROM golang:1.15.5-buster AS builder
 
 ENV GO111MODULE=on \
   GOOS=linux \
-  CGO_ENABLED=0 \
+  CGO_ENABLED=1 \
   GOARCH=amd64
 
 WORKDIR /tor-proxy
@@ -15,10 +15,9 @@ RUN go mod download
 COPY . .
 
 
-RUN go build -ldflags="-s -w" -o torproxy ./cmd/*
+RUN go build -o torproxy ./cmd/*.go
 
-WORKDIR /build
-
+WORKDIR /bin
 
 RUN cp /tor-proxy/torproxy .
 
