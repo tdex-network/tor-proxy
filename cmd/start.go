@@ -54,7 +54,7 @@ var start = cli.Command{
 		&cli.IntFlag{
 			Name:  "socks5-port",
 			Usage: "the socks5 port exposed by the tor client",
-			Value: 9150,
+			Value: 9050,
 		},
 	},
 	Action: startAction,
