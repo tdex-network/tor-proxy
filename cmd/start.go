@@ -1,12 +1,11 @@
 package main
 
 import (
-	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 
 	"github.com/tdex-network/tor-proxy/pkg/torproxy"
@@ -56,19 +55,14 @@ func startAction(ctx *cli.Context) error {
 	listeningAddress := "localhost:" + fmt.Sprint(ctx.Int("port"))
 
 	// registry
-	var data []map[string]string
-	err := json.Unmarshal([]byte(ctx.String("registry")), &data)
+	registryBytes, err := getRegistryJSON(ctx.String("registry"))
 	if err != nil {
-		return fmt.Errorf("invalid JSON: %w", err)
+		return fmt.Errorf("laoding json: %w", err)
 	}
-	redirects := make([]string, 0)
-	for _, v := range data {
-		if strings.Contains(v["endpoint"], "onion") {
-			redirects = append(redirects, v["endpoint"])
-		}
-	}
-	if len(redirects) == 0 {
-		return fmt.Errorf("no onion endpoints found in registry")
+
+	redirects, err := registryJSONToRedirects(registryBytes)
+	if err != nil {
+		return fmt.Errorf("validating json: %w", err)
 	}
 
 	// Serve the reverse proxy
@@ -86,9 +80,31 @@ func startAction(ctx *cli.Context) error {
 		return fmt.Errorf("serving proxy: %w", err)
 	}
 
+	// Catch SIGTERM and SIGINT signals
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
 	<-sigChan
 
 	return nil
+}
+
+// getRegistryJSON will check if the given string is a) a JSON by itself b) if is a path to a file c) remote url
+func getRegistryJSON(source string) ([]byte, error) {
+
+	// check if it is a json the given source already
+	if isArrayOfObjectsJSON(source) {
+		return []byte(source), nil
+	}
+
+	// check if is a valid URL
+	if isValidURL(source) {
+		return fetchFromRemoteURL(source)
+	}
+
+	// in the end check if is a path to a file. If it exists try to read
+	if _, err := os.Stat(source); !os.IsNotExist(err) {
+		return fetchFromFilePath(source)
+	}
+
+	return nil, errors.New("source must be either a valid JSON string, a remote URL or a valid path to a JSON file")
 }
