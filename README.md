@@ -1,6 +1,10 @@
 # 🧅 tor-proxy
-reverse proxy for tdex clients to consume onion endpoints without installing a tor client 
+HTTP/1.x reverse proxy to consume onion endpoints without installing a tor client 
 
+
+## TL;DR
+
+Everything that comes to proxy.tdex.network/<onion_public_key> is redirected to <onion_public_key>.onion
 
 ## 📩 Install 
 
