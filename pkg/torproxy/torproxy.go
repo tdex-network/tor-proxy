@@ -34,7 +34,7 @@ func NewTorProxyFromHostAndPort(torHost string, torPort int) (*TorProxy, error) 
 	}, nil
 }
 
-// NewTorProxy returns a default *TorProxy connecting on canonical localhost:9050
+// NewTorProxy starts an embedded tor client and returns a default *TorProxy on the canonical localhost:9050
 func NewTorProxy() (*TorProxy, error) {
 	torClient, err := NewTorEmbedded()
 	if err != nil {

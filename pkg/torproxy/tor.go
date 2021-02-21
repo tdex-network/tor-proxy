@@ -2,6 +2,7 @@ package torproxy
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/cretz/bine/tor"
 	"github.com/ipsn/go-libtor"
@@ -23,6 +24,8 @@ func NewTorEmbedded() (*TorClient, error) {
 	torInstance, err := tor.Start(nil, &tor.StartConf{
 		NoAutoSocksPort: true,
 		ProcessCreator:  libtor.Creator,
+		DebugWriter:     os.Stderr,
+		EnableNetwork:   true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("Failed to start tor: %v", err)
@@ -37,7 +40,7 @@ func NewTorEmbedded() (*TorClient, error) {
 
 }
 
-// Stop stops the tor client
-func (tc *TorClient) Stop() error {
+// Close stops the tor client
+func (tc *TorClient) Close() error {
 	return tc.tor.Close()
 }

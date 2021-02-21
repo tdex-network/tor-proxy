@@ -39,7 +39,7 @@ func fatal(err error) {
 	if errors.As(err, &e) {
 		_ = cli.ShowCommandHelp(e.ctx, e.command)
 	} else {
-		_, _ = fmt.Fprintf(os.Stderr, "[tower] %v\n", err)
+		_, _ = fmt.Fprintf(os.Stderr, "[torproxy] %v\n", err)
 	}
 	os.Exit(1)
 }
