@@ -1,11 +1,11 @@
 builds:
   - id: "torproxy"
-    main: ./cmd/*
+    main: ./cmd
     env:
       - CGO_ENABLED=1
     goos:
       - linux
-      - darwin
+      #- darwin
     goarch:
       - amd64
     binary: torproxy
