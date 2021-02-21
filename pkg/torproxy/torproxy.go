@@ -25,7 +25,27 @@ type TorProxy struct {
 // NewTorProxyFromHostAndPort returns a *TorProxy with givnen host and port
 func NewTorProxyFromHostAndPort(torHost string, torPort int) (*TorProxy, error) {
 
-	// TODO parse tor host and port here and try to dial/check it works
+	// dial to check if socks5 proxy is listening
+	dialer, err := proxy.SOCKS5("tcp", fmt.Sprintf("%s:%d", torHost, torPort), nil, proxy.Direct)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't connect to socks proxy: %w", err)
+	}
+
+	tr := &http.Transport{Dial: dialer.Dial}
+	c := &http.Client{
+		Transport: tr,
+	}
+
+	req, err := http.NewRequest(http.MethodGet, "https://check.torproject.org", nil)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't create request : %w", err)
+	}
+
+	_, err = c.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't make request: %w", err)
+	}
+
 	return &TorProxy{
 		Client: &TorClient{
 			Host: torHost,
@@ -71,7 +91,7 @@ func (tp *TorProxy) Serve(address string) error {
 	// Create a socks5 dialer
 	dialer, err := proxy.SOCKS5("tcp", fmt.Sprintf("%s:%d", tp.Client.Host, tp.Client.Port), nil, proxy.Direct)
 	if err != nil {
-		log.Fatalf("Couldn't connect to socks proxy: %s", err.Error())
+		log.Fatalf("couldn't connect to socks proxy: %s", err.Error())
 	}
 
 	// insecure
