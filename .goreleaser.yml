@@ -1,0 +1,39 @@
+builds:
+  - id: "torproxy"
+    main: ./cmd/main.go
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+    binary: torproxy
+checksum:
+  name_template: "checksums.txt"
+signs:
+  - artifacts: checksum
+    args:
+      [
+        "--batch",
+        "-u",
+        "{{ .Env.GPG_FINGERPRINT }}",
+        "--output",
+        "${signature}",
+        "--detach-sign",
+        "${artifact}",
+      ]
+snapshot:
+  name_template: "{{ .Tag }}-next"
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+archives:
+  - id: torproxy
+    format: binary
+    builds:
+      - torproxy
+    name_template: "torproxy-v{{ .Version }}-{{ .Os }}-{{ .Arch }}"
