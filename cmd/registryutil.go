@@ -7,19 +7,9 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 )
-
-func isValidURL(s string) bool {
-	_, err := url.ParseRequestURI(s)
-	if err != nil {
-		return false
-	}
-
-	return true
-}
 
 func isArrayOfObjectsJSON(s string) bool {
 	var js []map[string]interface{}

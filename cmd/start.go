@@ -4,12 +4,14 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/url"
 	"os"
 	"os/signal"
 	"syscall"
 
 	"github.com/tdex-network/tor-proxy/pkg/torproxy"
 	"github.com/urfave/cli/v2"
+	"github.com/weppos/publicsuffix-go/publicsuffix"
 )
 
 var start = cli.Command{
@@ -23,7 +25,11 @@ var start = cli.Command{
 		},
 		&cli.StringFlag{
 			Name:  "domain",
-			Usage: "TLD domain to expose the reverse proxy",
+			Usage: "TLD domain to obtain and renew the SSL certificate expose the reverse proxy",
+		},
+		&cli.StringFlag{
+			Name:  "email",
+			Usage: "email address to signify agreement and to be notified in case of issues with SSL certificate",
 		},
 		&cli.BoolFlag{
 			Name:  "insecure",
@@ -86,11 +92,30 @@ func startAction(ctx *cli.Context) error {
 	// Add redirects to the proxy
 	proxy.WithRedirects(redirects)
 
-	// will check if domain is given, now we default to insecure
-	listeningAddress := "localhost:" + fmt.Sprint(ctx.Int("port"))
-	log.Printf("Serving tor proxy on %s\n", listeningAddress)
+	// check if insecure flag, otherwise domain MUST be present to obtain SSL certificate
+	var address string
+	var tlsOptions *torproxy.TLSOptions
+	if ctx.Bool("insecure") {
+		address = ":" + fmt.Sprint(ctx.Int("port"))
+	} else {
+		email := ctx.String("email")
+		domain := ctx.String("domain")
 
-	if err := proxy.Serve(listeningAddress); err != nil {
+		// check if given domain is valid URL
+		if len(domain) == 0 || !isValidDomain(domain) {
+			return errors.New("domain is not a valid url to request a SSL certificate. Do you want to use --insecure?")
+		}
+
+		address = ":443"
+		tlsOptions = &torproxy.TLSOptions{
+			Domains: []string{domain},
+			Email:   email,
+		}
+	}
+
+	log.Printf("Serving tor proxy on %s\n", address)
+
+	if err := proxy.Serve(address, tlsOptions); err != nil {
 		return fmt.Errorf("serving proxy: %w", err)
 	}
 	defer proxy.Listener.Close()
@@ -103,6 +128,24 @@ func startAction(ctx *cli.Context) error {
 	fmt.Println("Shutdown")
 
 	return nil
+}
+
+func isValidURL(s string) bool {
+	_, err := url.ParseRequestURI(s)
+	if err != nil {
+		return false
+	}
+
+	return true
+}
+
+func isValidDomain(d string) bool {
+	_, err := publicsuffix.Parse(d)
+	if err != nil {
+		return false
+	}
+
+	return true
 }
 
 // getRegistryJSON will check if the given string is a) a JSON by itself b) if is a path to a file c) remote url
