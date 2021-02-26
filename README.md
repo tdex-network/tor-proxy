@@ -49,5 +49,18 @@ $ torproxy start --domain mywebsite.com --registry ./registry.json
 * Use embedded tor client
 
 ```sh
-$ torproxy start --domain mywebsite.com --registry ./registry.json --use-tor
+$ torproxy start --domain mywebsite.com --registry ./registry.json --use-tor 
+```
+## 🐋 Docker
+
+* Build
+
+```sh
+$ docker build -t ghcr.io/tdex-network/torproxy .
+```
+
+* Run 
+
+```sh
+$ docker run -it -d -p 443:443 -p 80:80 --name proxy --restart unless-stopped ghcr.io/tdex-network/torproxy start --use-tor --domain proxy.tdex.network --email myemail@domain.com --registry https://raw.githubusercontent.com/tdex-network/tdex-registry/master/registry.json 
 ```
