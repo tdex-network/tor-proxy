@@ -25,14 +25,12 @@ FROM debian:buster-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 
+COPY --from=builder /bin/torproxy /usr/local/bin/torproxy
+
 RUN useradd -ms /bin/bash torproxy
 
 USER torproxy
 
-COPY --from=builder /bin/torproxy /
 
-RUN install /torproxy /bin
-
-
-ENTRYPOINT ["/torproxy"]
+ENTRYPOINT ["torproxy"]
 
