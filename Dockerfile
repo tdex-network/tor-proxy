@@ -21,10 +21,13 @@ WORKDIR /bin
 
 RUN cp /tor-proxy/torproxy .
 
-FROM debian:buster
-
+FROM debian:buster-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
+
+RUN useradd -ms /bin/bash torproxy
+
+USER torproxy
 
 COPY --from=builder /bin/torproxy /
 

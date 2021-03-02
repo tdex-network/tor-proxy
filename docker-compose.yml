@@ -13,3 +13,5 @@ services:
       - --email=${EMAIL}
       - --registry=${REGISTRY}
       - --use-tor
+    volumes:
+      - ./data:/home/torproxy
