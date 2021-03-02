@@ -26,6 +26,7 @@ func NewTorEmbedded() (*TorClient, error) {
 		ProcessCreator:  libtor.Creator,
 		DebugWriter:     os.Stderr,
 		EnableNetwork:   true,
+		DataDir:         "/tmp/tordir",
 	})
 	if err != nil {
 		return nil, fmt.Errorf("Failed to start tor: %v", err)

@@ -27,10 +27,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 
 COPY --from=builder /bin/torproxy /usr/local/bin/torproxy
 
+RUN chmod a+x /usr/local/bin/torproxy
+
 RUN useradd -ms /bin/bash torproxy
 
 USER torproxy
 
+# Prevents `VOLUME $HOME/.local/` being created as owned by `root`
+RUN mkdir -p "$HOME/.local/"
 
 ENTRYPOINT ["torproxy"]
 
