@@ -1,0 +1,6 @@
+*.md
+bin
+dist
+.git
+.github
+Dockerfile
