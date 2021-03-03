@@ -36,3 +36,20 @@ archives:
     builds:
       - torproxy
     name_template: "torproxy-v{{ .Version }}-{{ .Os }}-{{ .Arch }}"
+dockers:
+  - dockerfile: Dockerfile
+    # image templates
+    image_templates:
+      - "gcr.io/tdex-network/torproxy:{{ .Tag }}"
+      - "gcr.io/tdex-network/torproxy:latest"
+    # GOOS of the built binaries/packages that should be used.
+    goos: linux
+    # GOARCH of the built binaries/packages that should be used.
+    goarch: amd64
+    # Template of the docker build flags.
+    build_flag_templates:
+      - "--pull"
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.title={{.ProjectName}}"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
