@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/caddyserver/certmagic"
+	"golang.org/x/net/http2"
 	"golang.org/x/net/proxy"
 )
 
@@ -126,8 +127,7 @@ func (tp *TorProxy) Serve(address string, options *TLSOptions) error {
 		if err != nil {
 			return err
 		}
-		tlsConfig.CipherSuites = []uint16{tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256}
-		tlsConfig.NextProtos = []string{"http/1.1", "h2", "h2-14"} // h2-14 is just for compatibility. will be eventually removed.
+		tlsConfig.NextProtos = []string{"http/1.1", http2.NextProtoTLS, "h2-14"} // h2-14 is just for compatibility. will be eventually removed.
 
 		// get a TLS listener
 		lis, err := tls.Listen("tcp", address, tlsConfig)
