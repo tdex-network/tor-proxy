@@ -108,10 +108,7 @@ func (tp *TorProxy) Serve(address string, options *TLSOptions) error {
 		log.Fatalf("couldn't connect to socks proxy: %s", err.Error())
 	}
 
-	var lis net.Listener
-
 	if options != nil {
-
 		// read and agree to your CA's legal documents
 		certmagic.DefaultACME.Agreed = true
 
@@ -133,7 +130,7 @@ func (tp *TorProxy) Serve(address string, options *TLSOptions) error {
 		tlsConfig.NextProtos = []string{"http/1.1", "h2", "h2-14"} // h2-14 is just for compatibility. will be eventually removed.
 
 		// get a TLS listener
-		lis, err = tls.Listen("tcp", address, tlsConfig)
+		lis, err := tls.Listen("tcp", address, tlsConfig)
 		if err != nil {
 			return err
 		}
@@ -154,11 +151,10 @@ func (tp *TorProxy) Serve(address string, options *TLSOptions) error {
 		// Set address and listener
 		tp.Address = address
 		tp.Listener = lis
-
 	}
 
 	// Now we can reverse proxy all the redirects
-	if err := reverseProxy(tp.Redirects, lis, dialer); err != nil {
+	if err := reverseProxy(tp.Redirects, tp.Listener, dialer); err != nil {
 		return err
 	}
 
