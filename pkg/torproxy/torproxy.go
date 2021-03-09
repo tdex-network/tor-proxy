@@ -173,6 +173,9 @@ func reverseProxy(redirects []*url.URL, lis net.Listener, dialer proxy.Dialer) e
 
 		http.HandleFunc(removeForUpstream+"/", func(w http.ResponseWriter, r *http.Request) {
 
+			// add cors headers
+			addCorsHeader(w, r)
+
 			// prepare request removing useless headers
 			if err := prepareRequest(r); err != nil {
 				http.Error(w, fmt.Errorf("preparation request in reverse proxy: %w", err).Error(), http.StatusInternalServerError)
@@ -194,4 +197,15 @@ func reverseProxy(redirects []*url.URL, lis net.Listener, dialer proxy.Dialer) e
 func withoutOnion(host string) string {
 	hostWithoutPort, _, _ := net.SplitHostPort(host)
 	return strings.ReplaceAll(hostWithoutPort, ".onion", "")
+}
+
+func addCorsHeader(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodOptions {
+		return
+	}
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
+	w.Header().Set("Access-Control-Allow-Headers", "*")
+	w.WriteHeader(http.StatusNoContent)
+	return
 }
