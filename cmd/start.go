@@ -122,7 +122,7 @@ func startAction(ctx *cli.Context) error {
 			return errors.New("either domain or certificate is required for TLS. Do you want to use --insecure?")
 		}
 
-		address = ":1443"
+		address = ":443"
 		tlsOptions = &torproxy.TLSOptions{
 			Domains: []string{domain},
 			Email:   email,
