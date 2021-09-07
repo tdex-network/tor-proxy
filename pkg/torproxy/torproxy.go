@@ -90,6 +90,8 @@ type TLSOptions struct {
 	Domains    []string
 	Email      string
 	UseStaging bool
+	TLSKey     string
+	TLSCert    string
 }
 
 // Serve starts a HTTP/1.x reverse proxy for all cleartext requests to the registered Onion addresses.
@@ -103,31 +105,42 @@ type TLSOptions struct {
 // Each incoming request will be proxied to <just_onion_host_without_dot_onion>.onion/[<grpc_package>.<grpc_service>/<grpc_method>]
 func (tp *TorProxy) Serve(address string, options *TLSOptions) error {
 
-	// Create a socks5 dialer
-	dialer, err := proxy.SOCKS5("tcp", fmt.Sprintf("%s:%d", tp.Client.Host, tp.Client.Port), nil, proxy.Direct)
-	if err != nil {
-		log.Fatalf("couldn't connect to socks proxy: %s", err.Error())
-	}
-
 	if options != nil {
-		// read and agree to your CA's legal documents
-		certmagic.DefaultACME.Agreed = true
 
-		// provide an email address
-		if len(options.Email) > 0 {
-			certmagic.DefaultACME.Email = options.Email
-		}
-		// use the staging endpoint while we're developing
-		if options.UseStaging {
-			certmagic.DefaultACME.CA = certmagic.LetsEncryptStagingCA
-		}
+		var tlsConfig *tls.Config
 
-		// config
-		tlsConfig, err := certmagic.TLS(options.Domains)
-		if err != nil {
-			return err
+		// if key and certificate filesystem paths are given, do NOT use certmagic.
+		if len(options.TLSKey) > 0 && len(options.TLSCert) > 0 {
+			certificate, err := tls.LoadX509KeyPair(options.TLSCert, options.TLSKey)
+			if err != nil {
+				return err
+			}
+
+			tlsConfig = &tls.Config{
+				NextProtos:   []string{"http/1.1", http2.NextProtoTLS, "h2-14"}, // h2-14 is just for compatibility. will be eventually removed.
+				Certificates: []tls.Certificate{certificate},
+			}
+		} else {
+
+			// read and agree to your CA's legal documents
+			certmagic.DefaultACME.Agreed = true
+
+			// provide an email address
+			if len(options.Email) > 0 {
+				certmagic.DefaultACME.Email = options.Email
+			}
+			// use the staging endpoint while we're developing
+			if options.UseStaging {
+				certmagic.DefaultACME.CA = certmagic.LetsEncryptStagingCA
+			}
+
+			// config
+			tlsConfig, err := certmagic.TLS(options.Domains)
+			if err != nil {
+				return err
+			}
+			tlsConfig.NextProtos = []string{"http/1.1", http2.NextProtoTLS, "h2-14"} // h2-14 is just for compatibility. will be eventually removed.
 		}
-		tlsConfig.NextProtos = []string{"http/1.1", http2.NextProtoTLS, "h2-14"} // h2-14 is just for compatibility. will be eventually removed.
 
 		// get a TLS listener
 		lis, err := tls.Listen("tcp", address, tlsConfig)
@@ -151,6 +164,12 @@ func (tp *TorProxy) Serve(address string, options *TLSOptions) error {
 		// Set address and listener
 		tp.Address = address
 		tp.Listener = lis
+	}
+
+	// Create a socks5 dialer
+	dialer, err := proxy.SOCKS5("tcp", fmt.Sprintf("%s:%d", tp.Client.Host, tp.Client.Port), nil, proxy.Direct)
+	if err != nil {
+		log.Fatalf("couldn't connect to socks proxy: %s", err.Error())
 	}
 
 	// Now we can reverse proxy all the redirects

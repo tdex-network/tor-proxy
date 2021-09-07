@@ -1,3 +1,5 @@
 /data-dir*
 /bin
 /dist
+localhost.key
+localhost.crt

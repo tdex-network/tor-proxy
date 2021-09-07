@@ -31,6 +31,14 @@ var start = cli.Command{
 			Name:  "email",
 			Usage: "email address to signify agreement and to be notified in case of issues with SSL certificate",
 		},
+		&cli.StringFlag{
+			Name:  "tls-cert-path",
+			Usage: "path of the the TLS certificate",
+		},
+		&cli.StringFlag{
+			Name:  "tls-key-path",
+			Usage: "path of the the TLS key",
+		},
 		&cli.BoolFlag{
 			Name:  "insecure",
 			Usage: "expose in plaintext in localhost",
@@ -92,7 +100,7 @@ func startAction(ctx *cli.Context) error {
 	// Add redirects to the proxy
 	proxy.WithRedirects(redirects)
 
-	// check if insecure flag, otherwise domain MUST be present to obtain SSL certificate
+	// check if insecure flag, otherwise either domain or key & cert paths MUST be present to serve with TLS
 	var address string
 	var tlsOptions *torproxy.TLSOptions
 	if ctx.Bool("insecure") {
@@ -100,16 +108,26 @@ func startAction(ctx *cli.Context) error {
 	} else {
 		email := ctx.String("email")
 		domain := ctx.String("domain")
+		tlsKey := ctx.String("tls-key-path")
+		tlsCert := ctx.String("tls-cert-path")
+
+		if (tlsKey == "" && tlsCert != "") || (tlsKey != "" && tlsCert == "") {
+			return fmt.Errorf(
+				"TLS requires both key and certificate when enabled",
+			)
+		}
 
 		// check if given domain is valid URL
-		if len(domain) == 0 || !isValidDomain(domain) {
-			return errors.New("domain is not a valid url to request a SSL certificate. Do you want to use --insecure?")
+		if (len(domain) == 0 || !isValidDomain(domain)) && tlsKey == "" && tlsCert == "" {
+			return errors.New("either domain or certificate is required for TLS. Do you want to use --insecure?")
 		}
 
 		address = ":443"
 		tlsOptions = &torproxy.TLSOptions{
 			Domains: []string{domain},
 			Email:   email,
+			TLSKey:  tlsKey,
+			TLSCert: tlsCert,
 		}
 	}
 
