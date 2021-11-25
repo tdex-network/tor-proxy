@@ -126,7 +126,6 @@ func (tp *TorProxy) StartAutoUpdateRedirects(period time.Duration, errorHandler 
 		for {
 			select {
 			case json := <-registryJSONchan:
-				log.Println("[INFO] receive json from registry")
 				err := tp.setRedirectsFromRegistry(json)
 				if err != nil {
 					errorHandler(err)
