@@ -39,6 +39,7 @@ $ torproxy start --domain mywebsite.com --registry '[{"endpoint": "http://somewh
 $ torproxy start --domain mywebsite.com --registry https://raw.githubusercontent.com/tdex-network/tdex-registry/master/registry.json
 ```
 
+With a URL, the proxy will refetch the registry every 12 hours in order to auto-update the set of endpoints to redirects.
 
 * Load registry from local path to file
 

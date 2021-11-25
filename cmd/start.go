@@ -4,11 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"net/url"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
+	registrypkg "github.com/tdex-network/tor-proxy/pkg/registry"
 	"github.com/tdex-network/tor-proxy/pkg/torproxy"
 	"github.com/urfave/cli/v2"
 	"github.com/weppos/publicsuffix-go/publicsuffix"
@@ -68,18 +69,14 @@ var start = cli.Command{
 	Action: startAction,
 }
 
-func startAction(ctx *cli.Context) error {
+// auto update period 
+const autoUpdatePeriod time.Duration = 12 * time.Hour
 
-	// load registry json
-	registryBytes, err := getRegistryJSON(ctx.String("registry"))
+func startAction(ctx *cli.Context) error {
+	// create registry
+	registry, err := registrypkg.NewRegistry(ctx.String("registry"))
 	if err != nil {
 		return fmt.Errorf("laoding json: %w", err)
-	}
-
-	// parse registry json
-	redirects, err := registryJSONToRedirects(registryBytes)
-	if err != nil {
-		return fmt.Errorf("validating json: %w", err)
 	}
 
 	var proxy *torproxy.TorProxy
@@ -97,8 +94,19 @@ func startAction(ctx *cli.Context) error {
 		return fmt.Errorf("creating tor instance: %w", err)
 	}
 
-	// Add redirects to the proxy
-	proxy.WithRedirects(redirects)
+	// Add registry to the proxy
+	// this will init the set of redirects
+	proxy.WithRegistry(registry)
+	stopAutoUpdateFunc := func() {} // will be used to stop the auto update goroutine
+
+	if proxy.Registry.RegistryType() == registrypkg.RemoteRegistryType {
+		errorHandler := func (err error) {
+			log.Println("registry auto update error: %w", err) 
+		}
+		// start auto updater and store the stop function for shutdown
+		stopAutoUpdateFunc = proxy.StartAutoUpdateRedirects(autoUpdatePeriod, errorHandler)
+	}
+
 
 	// check if insecure flag, otherwise either domain or key & cert paths MUST be present to serve with TLS
 	var address string
@@ -142,47 +150,14 @@ func startAction(ctx *cli.Context) error {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
 	<-sigChan
+	stopAutoUpdateFunc()
 
 	fmt.Println("Shutdown")
 
 	return nil
 }
 
-func isValidURL(s string) bool {
-	_, err := url.ParseRequestURI(s)
-	if err != nil {
-		return false
-	}
-
-	return true
-}
-
 func isValidDomain(d string) bool {
 	_, err := publicsuffix.Parse(d)
-	if err != nil {
-		return false
-	}
-
-	return true
-}
-
-// getRegistryJSON will check if the given string is a) a JSON by itself b) if is a path to a file c) remote url
-func getRegistryJSON(source string) ([]byte, error) {
-
-	// check if it is a json the given source already
-	if isArrayOfObjectsJSON(source) {
-		return []byte(source), nil
-	}
-
-	// check if is a valid URL
-	if isValidURL(source) {
-		return fetchFromRemoteURL(source)
-	}
-
-	// in the end check if is a path to a file. If it exists try to read
-	if _, err := os.Stat(source); !os.IsNotExist(err) {
-		return fetchFromFilePath(source)
-	}
-
-	return nil, errors.New("source must be either a valid JSON string, a remote URL or a valid path to a JSON file")
+	return err == nil
 }
