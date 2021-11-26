@@ -15,6 +15,9 @@ import (
 	"github.com/weppos/publicsuffix-go/publicsuffix"
 )
 
+// in case of remote registry, an auto updater is set up
+const autoUpdatePeriod time.Duration = 12 * time.Hour
+
 var start = cli.Command{
 	Name:  "start",
 	Usage: "start the reverse proxy",
@@ -69,17 +72,10 @@ var start = cli.Command{
 	Action: startAction,
 }
 
-// auto update period 
-const autoUpdatePeriod time.Duration = 12 * time.Hour
-
 func startAction(ctx *cli.Context) error {
-	// create registry
-	registry, err := registrypkg.NewRegistry(ctx.String("registry"))
-	if err != nil {
-		return fmt.Errorf("laoding json: %w", err)
-	}
-
 	var proxy *torproxy.TorProxy
+	var err error
+
 	if ctx.Bool("use-tor") {
 		// use the embedded tor client and expose it on :9050
 		proxy, err = torproxy.NewTorProxy()
@@ -94,19 +90,25 @@ func startAction(ctx *cli.Context) error {
 		return fmt.Errorf("creating tor instance: %w", err)
 	}
 
+	// create registry
+	registry, err := registrypkg.NewRegistry(ctx.String("registry"))
+	if err != nil {
+		return fmt.Errorf("loading json: %w", err)
+	}
+
 	// Add registry to the proxy
 	// this will init the set of redirects
+	// in case of remote registry (an URL): start auto-updater
 	proxy.WithRegistry(registry)
-	stopAutoUpdateFunc := func() {} // will be used to stop the auto update goroutine
 
 	if proxy.Registry.RegistryType() == registrypkg.RemoteRegistryType {
 		errorHandler := func (err error) {
 			log.Println("registry auto update error: %w", err) 
 		}
-		// start auto updater and store the stop function for shutdown
-		stopAutoUpdateFunc = proxy.StartAutoUpdateRedirects(autoUpdatePeriod, errorHandler)
-	}
 
+		log.Printf("starting registry auto update every %s", autoUpdatePeriod)
+		proxy.WithAutoUpdater(autoUpdatePeriod, errorHandler)
+	}
 
 	// check if insecure flag, otherwise either domain or key & cert paths MUST be present to serve with TLS
 	var address string
@@ -144,13 +146,13 @@ func startAction(ctx *cli.Context) error {
 	if err := proxy.Serve(address, tlsOptions); err != nil {
 		return fmt.Errorf("serving proxy: %w", err)
 	}
-	defer proxy.Listener.Close()
+	// close the proxy when the process is interrupted
+	defer proxy.Close() // close the auto-updater in case of remote registry
 
 	// Catch SIGTERM and SIGINT signals
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
 	<-sigChan
-	stopAutoUpdateFunc()
 
 	fmt.Println("Shutdown")
 

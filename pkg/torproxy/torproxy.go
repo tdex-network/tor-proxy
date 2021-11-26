@@ -28,6 +28,7 @@ type TorProxy struct {
 
 	Listener net.Listener
 	useTLS   bool
+	closeAutoUpdaterFunc func()
 }
 
 // NewTorProxyFromHostAndPort returns a *TorProxy with givnen host and port
@@ -74,8 +75,8 @@ func NewTorProxy() (*TorProxy, error) {
 	}, nil
 }
 
-func (tp *TorProxy) WithRegistry(registry registry.Registry) error {
-	tp.Registry = registry
+func (tp *TorProxy) WithRegistry(regis registry.Registry) error {
+	tp.Registry = regis
 	registryJSON, err := tp.Registry.GetJSON()
 	if err != nil {
 		return err
@@ -117,26 +118,26 @@ func (tp TorProxy) includesRedirect(redirect *url.URL) bool {
 	return false
 }
 
-// StartAutoUpdateRedirects starts a go-routine selecting results of registry.Observe
-// return a `stop` function using to close channels and stop auto-update.
-func (tp *TorProxy) StartAutoUpdateRedirects(period time.Duration, errorHandler func (err error)) func() {
-	registryJSONchan, errors, stop := registry.Observe(tp.Registry, period)
+// WithAutoUpdater starts a go-routine selecting results of registry.Observe
+// set up a stop function in TorProxy to stop the go-routine in Close method
+func (tp *TorProxy) WithAutoUpdater(period time.Duration, errorHandler func (err error)) {
+	observeRegistryChan, stop := registry.Observe(tp.Registry, period)
 
 	go func() {
-		for {
-			select {
-			case json := <-registryJSONchan:
-				err := tp.setRedirectsFromRegistry(json)
-				if err != nil {
-					errorHandler(err)
-				}
-			case err := <-errors:
+		for newGetJSONResult := range observeRegistryChan {
+			if newGetJSONResult.Err != nil {
+				errorHandler(newGetJSONResult.Err)
+				continue
+			}
+
+			err := tp.setRedirectsFromRegistry(newGetJSONResult.Json)
+			if err != nil {
 				errorHandler(err)
 			}
 		}
 	}()
 
-	return stop
+	tp.closeAutoUpdaterFunc = stop
 }
 
 
@@ -244,6 +245,19 @@ func (tp *TorProxy) Serve(address string, options *TLSOptions) error {
 	}
 
 	return err
+}
+
+func (tp *TorProxy) Close() error {
+	err := tp.Listener.Close()
+	if err != nil {
+		return err
+	}
+
+	if tp.closeAutoUpdaterFunc != nil {
+		tp.closeAutoUpdaterFunc()
+	}
+
+	return nil
 }
 
 // reverseProxy takes an address where to listen, a dialer with SOCKS5 proxy and a list of redirects as a list of URLs

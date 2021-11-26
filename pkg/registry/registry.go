@@ -22,34 +22,36 @@ type Registry interface {
 	GetJSON() ([]byte, error)
 }
 
+type ObserveRegistryResult struct {
+	Json []byte
+	Err  error
+}
+
 // Observe the registry for changes
 // returns json bytes and errors via channels
-func Observe(registry Registry, period time.Duration) (<-chan []byte, <-chan error, func()) {
-	jsonChan := make(chan []byte)
-	errorsChan := make(chan error)
+func Observe(registry Registry, period time.Duration) (<-chan ObserveRegistryResult, func()) {
+	resultChan := make(chan ObserveRegistryResult)
+	
+	ticker := time.NewTicker(period)
+	done := make(chan struct{})
 
-	stop := make(chan struct{})
 	go func() {
 		for {
 			select {
-			case <-stop:
+			case <-done:
 				return
-			default:
+			
+			case <-ticker.C:
 				json, err := registry.GetJSON()
-				if err != nil {
-					errorsChan <- err
-				} else {
-					jsonChan <- json
-				}
-				time.Sleep(period)
+				resultChan <- ObserveRegistryResult{json, err}
 			}
 		}
 	}()
 
-	return jsonChan, errorsChan, func() {
-		stop <- struct{}{}
-		close(jsonChan)
-		close(errorsChan)
+	return resultChan, func() {
+		ticker.Stop()
+		done <- struct{}{}
+		close(resultChan)
 	}
 }
 
