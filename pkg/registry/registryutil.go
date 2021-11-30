@@ -1,4 +1,4 @@
-package main
+package registry
 
 import (
 	"encoding/json"
@@ -7,7 +7,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
-	"strings"
+	"net/url"
 	"time"
 )
 
@@ -15,6 +15,11 @@ func isArrayOfObjectsJSON(s string) bool {
 	var js []map[string]interface{}
 	return json.Unmarshal([]byte(s), &js) == nil
 
+}
+
+func isValidURL(s string) bool {
+	_, err := url.ParseRequestURI(s)
+	return err == nil
 }
 
 func fetchFromFilePath(source string) ([]byte, error) {
@@ -58,21 +63,3 @@ func fetchFromRemoteURL(source string) ([]byte, error) {
 	return body, nil
 }
 
-func registryJSONToRedirects(registryJSON []byte) ([]string, error) {
-	var data []map[string]string
-	err := json.Unmarshal(registryJSON, &data)
-	if err != nil {
-		return nil, fmt.Errorf("invalid JSON: %w", err)
-	}
-	redirects := make([]string, 0)
-	for _, v := range data {
-		if strings.Contains(v["endpoint"], "onion") {
-			redirects = append(redirects, v["endpoint"])
-		}
-	}
-	if len(redirects) == 0 {
-		return nil, errors.New("no valid onion endpoints found")
-	}
-
-	return redirects, nil
-}

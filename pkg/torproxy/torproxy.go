@@ -2,14 +2,18 @@ package torproxy
 
 import (
 	"crypto/tls"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/caddyserver/certmagic"
+	"github.com/tdex-network/tor-proxy/pkg/registry"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/proxy"
 )
@@ -19,10 +23,12 @@ type TorProxy struct {
 	Address   string
 	Domains   []string
 	Client    *TorClient
+	Registry 	registry.Registry
 	Redirects []*url.URL
 
 	Listener net.Listener
 	useTLS   bool
+	closeAutoUpdaterFunc func()
 }
 
 // NewTorProxyFromHostAndPort returns a *TorProxy with givnen host and port
@@ -61,7 +67,7 @@ func NewTorProxyFromHostAndPort(torHost string, torPort int) (*TorProxy, error) 
 func NewTorProxy() (*TorProxy, error) {
 	torClient, err := NewTorEmbedded()
 	if err != nil {
-		return nil, fmt.Errorf("Couldn't start tor client: %w", err)
+		return nil, fmt.Errorf("couldn't start tor client: %w", err)
 	}
 
 	return &TorProxy{
@@ -69,21 +75,71 @@ func NewTorProxy() (*TorProxy, error) {
 	}, nil
 }
 
+func (tp *TorProxy) WithRegistry(regis registry.Registry) error {
+	tp.Registry = regis
+	registryJSON, err := tp.Registry.GetJSON()
+	if err != nil {
+		return err
+	}
+
+	return tp.setRedirectsFromRegistry(registryJSON)
+}
+
 // WithRedirects modify the TorProxy struct with givend from -> to map
-func (tp *TorProxy) WithRedirects(redirects []string) error {
-	var err error
+// add the redirect URL if and only if the tor proxy doesn't know the new origin
+func (tp *TorProxy) setRedirectsFromRegistry(registryJSON []byte) error {
+	redirects, err := parseRegistryJSONtoRedirects(registryJSON)
+	if err != nil {
+		return err
+	}
+
 	for _, to := range redirects {
 		// we parse the destination upstram which should be on *.onion address
 		origin, err := url.Parse(to)
 		if err != nil {
-			err = fmt.Errorf("Failed to parse address : %v", err)
-			break
+			return fmt.Errorf("failed to parse address : %v", err)
 		}
-		tp.Redirects = append(tp.Redirects, origin)
+
+		if !tp.includesRedirect(origin) {
+			tp.Redirects = append(tp.Redirects, origin)
+		}
 	}
 
 	return err
 }
+
+func (tp TorProxy) includesRedirect(redirect *url.URL) bool {
+	for _, proxyRedirect := range tp.Redirects {
+		if proxyRedirect.Host == redirect.Host {
+			return true
+		}
+	}
+
+	return false
+}
+
+// WithAutoUpdater starts a go-routine selecting results of registry.Observe
+// set up a stop function in TorProxy to stop the go-routine in Close method
+func (tp *TorProxy) WithAutoUpdater(period time.Duration, errorHandler func (err error)) {
+	observeRegistryChan, stop := registry.Observe(tp.Registry, period)
+
+	go func() {
+		for newGetJSONResult := range observeRegistryChan {
+			if newGetJSONResult.Err != nil {
+				errorHandler(newGetJSONResult.Err)
+				continue
+			}
+
+			err := tp.setRedirectsFromRegistry(newGetJSONResult.Json)
+			if err != nil {
+				errorHandler(err)
+			}
+		}
+	}()
+
+	tp.closeAutoUpdaterFunc = stop
+}
+
 
 // TLSOptions defines the domains we need to obtain and renew a TLS cerficate
 type TLSOptions struct {
@@ -122,7 +178,6 @@ func (tp *TorProxy) Serve(address string, options *TLSOptions) error {
 				CipherSuites: []uint16{
 					tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
 					tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
-					tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
 					tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA,
 					tls.TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
 					tls.TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA,
@@ -191,6 +246,19 @@ func (tp *TorProxy) Serve(address string, options *TLSOptions) error {
 	return err
 }
 
+func (tp *TorProxy) Close() error {
+	err := tp.Listener.Close()
+	if err != nil {
+		return err
+	}
+
+	if tp.closeAutoUpdaterFunc != nil {
+		tp.closeAutoUpdaterFunc()
+	}
+
+	return nil
+}
+
 // reverseProxy takes an address where to listen, a dialer with SOCKS5 proxy and a list of redirects as a list of URLs
 // the incoming request should match the pattern host:port/<just_onion_host_without_dot_onion>/<grpc_package>.<grpc_service>/<grpc_method>
 func reverseProxy(redirects []*url.URL, lis net.Listener, dialer proxy.Dialer) error {
@@ -237,5 +305,23 @@ func addCorsHeader(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
 	w.Header().Set("Access-Control-Allow-Headers", "*")
 	w.WriteHeader(http.StatusNoContent)
-	return
+}
+
+func parseRegistryJSONtoRedirects(registryJSON []byte) ([]string, error) {
+	var data []map[string]string
+	err := json.Unmarshal(registryJSON, &data)
+	if err != nil {
+		return nil, fmt.Errorf("invalid JSON: %w", err)
+	}
+	redirects := make([]string, 0)
+	for _, v := range data {
+		if strings.Contains(v["endpoint"], "onion") {
+			redirects = append(redirects, v["endpoint"])
+		}
+	}
+	if len(redirects) == 0 {
+		return nil, errors.New("no valid onion endpoints found")
+	}
+
+	return redirects, nil
 }

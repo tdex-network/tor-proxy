@@ -4,11 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"net/url"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
+	registrypkg "github.com/tdex-network/tor-proxy/pkg/registry"
 	"github.com/tdex-network/tor-proxy/pkg/torproxy"
 	"github.com/urfave/cli/v2"
 	"github.com/weppos/publicsuffix-go/publicsuffix"
@@ -64,25 +65,19 @@ var start = cli.Command{
 			Usage: "the socks5 port exposed by the tor client",
 			Value: 9050,
 		},
+		&cli.IntFlag{
+			Name:  "auto-update-period",
+			Usage: "period in hours to check for new endpoints",
+			Value: 12,
+		},
 	},
 	Action: startAction,
 }
 
 func startAction(ctx *cli.Context) error {
-
-	// load registry json
-	registryBytes, err := getRegistryJSON(ctx.String("registry"))
-	if err != nil {
-		return fmt.Errorf("laoding json: %w", err)
-	}
-
-	// parse registry json
-	redirects, err := registryJSONToRedirects(registryBytes)
-	if err != nil {
-		return fmt.Errorf("validating json: %w", err)
-	}
-
 	var proxy *torproxy.TorProxy
+	var err error
+
 	if ctx.Bool("use-tor") {
 		// use the embedded tor client and expose it on :9050
 		proxy, err = torproxy.NewTorProxy()
@@ -97,8 +92,27 @@ func startAction(ctx *cli.Context) error {
 		return fmt.Errorf("creating tor instance: %w", err)
 	}
 
-	// Add redirects to the proxy
-	proxy.WithRedirects(redirects)
+	// create registry
+	registry, err := registrypkg.NewRegistry(ctx.String("registry"))
+	if err != nil {
+		return fmt.Errorf("loading json: %w", err)
+	}
+
+	// Add registry to the proxy
+	// this will init the set of redirects
+	// in case of remote registry (an URL): start auto-updater
+	proxy.WithRegistry(registry)
+
+	if proxy.Registry.RegistryType() == registrypkg.RemoteRegistryType {
+		errorHandler := func (err error) {
+			log.Println("registry auto update error: %w", err) 
+		}
+
+		period := ctx.Int("auto-update-period")
+		autoUpdatePeriod := time.Duration(period) * time.Hour
+		log.Printf("starting registry auto update every %s", autoUpdatePeriod)
+		proxy.WithAutoUpdater(autoUpdatePeriod, errorHandler)
+	}
 
 	// check if insecure flag, otherwise either domain or key & cert paths MUST be present to serve with TLS
 	var address string
@@ -136,7 +150,8 @@ func startAction(ctx *cli.Context) error {
 	if err := proxy.Serve(address, tlsOptions); err != nil {
 		return fmt.Errorf("serving proxy: %w", err)
 	}
-	defer proxy.Listener.Close()
+	// close the proxy when the process is interrupted
+	defer proxy.Close() // close the auto-updater in case of remote registry
 
 	// Catch SIGTERM and SIGINT signals
 	sigChan := make(chan os.Signal, 1)
@@ -148,41 +163,7 @@ func startAction(ctx *cli.Context) error {
 	return nil
 }
 
-func isValidURL(s string) bool {
-	_, err := url.ParseRequestURI(s)
-	if err != nil {
-		return false
-	}
-
-	return true
-}
-
 func isValidDomain(d string) bool {
 	_, err := publicsuffix.Parse(d)
-	if err != nil {
-		return false
-	}
-
-	return true
-}
-
-// getRegistryJSON will check if the given string is a) a JSON by itself b) if is a path to a file c) remote url
-func getRegistryJSON(source string) ([]byte, error) {
-
-	// check if it is a json the given source already
-	if isArrayOfObjectsJSON(source) {
-		return []byte(source), nil
-	}
-
-	// check if is a valid URL
-	if isValidURL(source) {
-		return fetchFromRemoteURL(source)
-	}
-
-	// in the end check if is a path to a file. If it exists try to read
-	if _, err := os.Stat(source); !os.IsNotExist(err) {
-		return fetchFromFilePath(source)
-	}
-
-	return nil, errors.New("source must be either a valid JSON string, a remote URL or a valid path to a JSON file")
+	return err == nil
 }

@@ -1,6 +1,7 @@
 package torproxy
 
 import (
+	"context"
 	"fmt"
 	"os"
 
@@ -21,7 +22,7 @@ type TorClient struct {
 // NewTorEmbedded starts the embedded tor client
 func NewTorEmbedded() (*TorClient, error) {
 	// Starting tor please wait a bit...
-	torInstance, err := tor.Start(nil, &tor.StartConf{
+	torInstance, err := tor.Start(context.Background(), &tor.StartConf{
 		NoAutoSocksPort: true,
 		ProcessCreator:  libtor.Creator,
 		DebugWriter:     os.Stderr,
@@ -29,7 +30,7 @@ func NewTorEmbedded() (*TorClient, error) {
 		DataDir:         "/tmp/tordir",
 	})
 	if err != nil {
-		return nil, fmt.Errorf("Failed to start tor: %v", err)
+		return nil, fmt.Errorf("failed to start tor: %v", err)
 	}
 
 	return &TorClient{
