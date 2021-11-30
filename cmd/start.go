@@ -15,9 +15,6 @@ import (
 	"github.com/weppos/publicsuffix-go/publicsuffix"
 )
 
-// in case of remote registry, an auto updater is set up
-const autoUpdatePeriod time.Duration = 12 * time.Hour
-
 var start = cli.Command{
 	Name:  "start",
 	Usage: "start the reverse proxy",
@@ -68,6 +65,11 @@ var start = cli.Command{
 			Usage: "the socks5 port exposed by the tor client",
 			Value: 9050,
 		},
+		&cli.IntFlag{
+			Name:  "auto-update-period",
+			Usage: "period in hours to check for new endpoints",
+			Value: 12,
+		},
 	},
 	Action: startAction,
 }
@@ -106,6 +108,8 @@ func startAction(ctx *cli.Context) error {
 			log.Println("registry auto update error: %w", err) 
 		}
 
+		period := ctx.Int("auto-update-period")
+		autoUpdatePeriod := time.Duration(period) * time.Hour
 		log.Printf("starting registry auto update every %s", autoUpdatePeriod)
 		proxy.WithAutoUpdater(autoUpdatePeriod, errorHandler)
 	}
