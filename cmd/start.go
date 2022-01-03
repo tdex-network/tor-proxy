@@ -50,11 +50,6 @@ var start = cli.Command{
 			Usage: "listening port for the reverse proxy",
 			Value: 7070,
 		},
-		&cli.BoolFlag{
-			Name:  "use-tor",
-			Usage: "use embedded tor client",
-			Value: false,
-		},
 		&cli.StringFlag{
 			Name:  "socks5-hostname",
 			Usage: "the socks5 hostname exposed by the tor client",
@@ -75,19 +70,12 @@ var start = cli.Command{
 }
 
 func startAction(ctx *cli.Context) error {
-	var proxy *torproxy.TorProxy
-	var err error
 
-	if ctx.Bool("use-tor") {
-		// use the embedded tor client and expose it on :9050
-		proxy, err = torproxy.NewTorProxy()
-	} else {
-		// use an external socks5 interface
-		proxy, err = torproxy.NewTorProxyFromHostAndPort(
-			ctx.String("socks5-hostname"),
-			ctx.Int("socks5-port"),
-		)
-	}
+	// use an external socks5 interface
+	proxy, err := torproxy.NewTorProxyFromHostAndPort(
+		ctx.String("socks5-hostname"),
+		ctx.Int("socks5-port"),
+	)
 	if err != nil {
 		return fmt.Errorf("creating tor instance: %w", err)
 	}
@@ -104,8 +92,8 @@ func startAction(ctx *cli.Context) error {
 	proxy.WithRegistry(registry)
 
 	if proxy.Registry.RegistryType() == registrypkg.RemoteRegistryType {
-		errorHandler := func (err error) {
-			log.Println("registry auto update error: %w", err) 
+		errorHandler := func(err error) {
+			log.Println("registry auto update error: %w", err)
 		}
 
 		period := ctx.Int("auto-update-period")

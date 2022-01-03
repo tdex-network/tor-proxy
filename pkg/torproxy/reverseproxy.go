@@ -6,6 +6,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"strings"
+	"time"
 
 	"golang.org/x/net/http/httpguts"
 	"golang.org/x/net/proxy"
@@ -22,7 +23,8 @@ func generateReverseProxy(origin *url.URL, dialer proxy.Dialer) *httputil.Revers
 		req.Host = origin.Host
 	}
 	transport := &http.Transport{
-		Dial: dialer.Dial,
+		Dial:                dialer.Dial,
+		TLSHandshakeTimeout: 10 * time.Second,
 	}
 	revproxy := &httputil.ReverseProxy{Director: director, Transport: transport}
 	return revproxy

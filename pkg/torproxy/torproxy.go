@@ -18,16 +18,21 @@ import (
 	"golang.org/x/net/proxy"
 )
 
+type TorClient struct {
+	Host string
+	Port int
+}
+
 // TorProxy holds the tor client details and the list cleartext addresses to be redirect to the onions URLs
 type TorProxy struct {
 	Address   string
 	Domains   []string
 	Client    *TorClient
-	Registry 	registry.Registry
+	Registry  registry.Registry
 	Redirects []*url.URL
 
-	Listener net.Listener
-	useTLS   bool
+	Listener             net.Listener
+	useTLS               bool
 	closeAutoUpdaterFunc func()
 }
 
@@ -60,18 +65,6 @@ func NewTorProxyFromHostAndPort(torHost string, torPort int) (*TorProxy, error) 
 			Host: torHost,
 			Port: torPort,
 		},
-	}, nil
-}
-
-// NewTorProxy starts an embedded tor client and returns a default *TorProxy on the canonical localhost:9050
-func NewTorProxy() (*TorProxy, error) {
-	torClient, err := NewTorEmbedded()
-	if err != nil {
-		return nil, fmt.Errorf("couldn't start tor client: %w", err)
-	}
-
-	return &TorProxy{
-		Client: torClient,
 	}, nil
 }
 
@@ -120,7 +113,7 @@ func (tp TorProxy) includesRedirect(redirect *url.URL) bool {
 
 // WithAutoUpdater starts a go-routine selecting results of registry.Observe
 // set up a stop function in TorProxy to stop the go-routine in Close method
-func (tp *TorProxy) WithAutoUpdater(period time.Duration, errorHandler func (err error)) {
+func (tp *TorProxy) WithAutoUpdater(period time.Duration, errorHandler func(err error)) {
 	observeRegistryChan, stop := registry.Observe(tp.Registry, period)
 
 	go func() {
@@ -139,7 +132,6 @@ func (tp *TorProxy) WithAutoUpdater(period time.Duration, errorHandler func (err
 
 	tp.closeAutoUpdaterFunc = stop
 }
-
 
 // TLSOptions defines the domains we need to obtain and renew a TLS cerficate
 type TLSOptions struct {
