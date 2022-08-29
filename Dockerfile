@@ -33,5 +33,6 @@ USER torproxy
 # Prevents `VOLUME $HOME/.local/` being created as owned by `root`
 RUN mkdir -p "$HOME/.local/"
 
-ENTRYPOINT ["torproxy"]
+
+ENTRYPOINT torproxy start --insecure --port="${PORT}" --registry="${REGISTRY_URL}" --socks5-hostname="${SOCKS5_HOSTNAME}" --socks5-port="${SOCKS5_PORT}"
 
