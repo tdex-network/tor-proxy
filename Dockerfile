@@ -1,10 +1,7 @@
-# first image used to build the sources
-FROM golang:1.15.5-buster AS builder
+FROM golang:1.18-buster AS builder
 
 ENV GO111MODULE=on \
-  GOOS=linux \
-  CGO_ENABLED=1 \
-  GOARCH=amd64
+  CGO_ENABLED=0
 
 WORKDIR /tor-proxy
 
