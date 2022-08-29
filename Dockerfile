@@ -20,7 +20,7 @@ RUN cp /tor-proxy/torproxy .
 
 FROM debian:buster-slim
 
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates
 
 COPY --from=builder /bin/torproxy /usr/local/bin/torproxy
 
