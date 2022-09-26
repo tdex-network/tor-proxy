@@ -263,6 +263,11 @@ func reverseProxy(redirects []*url.URL, lis net.Listener, dialer proxy.Dialer) e
 			// add cors headers
 			addCorsHeader(w, r)
 
+			// Handler pre-flight requests
+			if r.Method == http.MethodOptions {
+				return
+			}
+
 			// prepare request removing useless headers
 			if err := prepareRequest(r); err != nil {
 				http.Error(w, fmt.Errorf("preparation request in reverse proxy: %w", err).Error(), http.StatusInternalServerError)
